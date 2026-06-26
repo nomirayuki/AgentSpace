@@ -1,0 +1,13 @@
+{
+  "name": "AgentSpace",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "postCreateCommand": "npm ci || npm install",
+  "forwardPorts": [3000],
+  "portsAttributes": { "3000": { "label": "AgentSpace API" } },
+  "customizations": {
+    "vscode": {
+      "settings": { "editor.formatOnSave": true },
+      "extensions": ["esbenp.prettier-vscode", "dbaeumer.vscode-eslint"]
+    }
+  }
+}

