@@ -109,6 +109,8 @@ export interface LLMMessage {
   toolCallId?: string;
   /** Present on `tool` messages: the tool that produced this result. */
   name?: string;
+  /** Present on `assistant` messages that requested tool execution. */
+  toolCalls?: ToolCall[];
 }
 
 /** A request from the brain to invoke a tool. */

@@ -1,4 +1,4 @@
-import type { LLMCompletion, LLMMessage } from './types.js';
+import type { LLMCompletion, LLMMessage, ToolCall } from './types.js';
 import type { ToolSpec } from './tools.js';
 
 /**
@@ -67,10 +67,111 @@ export interface HttpProviderOptions {
   maxTokens?: number;
 }
 
+// ---------------------------------------------------------------------------
+// Anthropic mapping (pure, unit-tested helpers)
+// ---------------------------------------------------------------------------
+
+type AnthropicBlock =
+  | { type: 'text'; text: string }
+  | { type: 'tool_use'; id: string; name: string; input: unknown }
+  | { type: 'tool_result'; tool_use_id: string; content: string };
+
+interface AnthropicMessage {
+  role: 'user' | 'assistant';
+  content: string | AnthropicBlock[];
+}
+
+/** Map tool specs to Anthropic's `tools` schema. */
+export function toAnthropicTools(tools: ToolSpec[]) {
+  return tools.map((t) => ({
+    name: t.name,
+    description: t.description,
+    input_schema: t.parameters,
+  }));
+}
+
 /**
- * Anthropic Messages API adapter. Uses the global `fetch` (Node 18+), so no
- * extra dependency is required. Tool-calling wiring is intentionally minimal;
- * extend `complete` to map Anthropic `tool_use` blocks to {@link ToolCall}s.
+ * Translate the flat YUKI message list into Anthropic's system string plus the
+ * block-structured message array. Consecutive `tool` results are merged into a
+ * single `user` turn of `tool_result` blocks, as the API requires.
+ */
+export function toAnthropicMessages(messages: LLMMessage[]): {
+  system: string;
+  messages: AnthropicMessage[];
+} {
+  const system = messages
+    .filter((m) => m.role === 'system')
+    .map((m) => m.content)
+    .join('\n\n');
+
+  const out: AnthropicMessage[] = [];
+  let pendingToolResults: AnthropicBlock[] = [];
+
+  const flush = () => {
+    if (pendingToolResults.length) {
+      out.push({ role: 'user', content: pendingToolResults });
+      pendingToolResults = [];
+    }
+  };
+
+  for (const m of messages) {
+    if (m.role === 'tool') {
+      pendingToolResults.push({
+        type: 'tool_result',
+        tool_use_id: m.toolCallId ?? '',
+        content: m.content,
+      });
+      continue;
+    }
+    flush();
+    if (m.role === 'user') {
+      out.push({ role: 'user', content: m.content });
+    } else if (m.role === 'assistant') {
+      if (m.toolCalls && m.toolCalls.length) {
+        const blocks: AnthropicBlock[] = [];
+        if (m.content) blocks.push({ type: 'text', text: m.content });
+        for (const tc of m.toolCalls) {
+          blocks.push({
+            type: 'tool_use',
+            id: tc.id,
+            name: tc.name,
+            input: tc.args,
+          });
+        }
+        out.push({ role: 'assistant', content: blocks });
+      } else {
+        out.push({ role: 'assistant', content: m.content });
+      }
+    }
+    // system messages are folded into `system` above
+  }
+  flush();
+  return { system, messages: out };
+}
+
+/** Parse Anthropic response content blocks into a normalized completion. */
+export function parseAnthropicContent(
+  blocks: Array<{
+    type: string;
+    text?: string;
+    id?: string;
+    name?: string;
+    input?: unknown;
+  }>,
+): LLMCompletion {
+  const text = blocks
+    .filter((b) => b.type === 'text' && typeof b.text === 'string')
+    .map((b) => b.text as string)
+    .join('');
+  const toolCalls: ToolCall[] = blocks
+    .filter((b) => b.type === 'tool_use')
+    .map((b) => ({ id: b.id ?? '', name: b.name ?? '', args: b.input ?? {} }));
+  return { content: text, toolCalls };
+}
+
+/**
+ * Anthropic Messages API adapter with native tool calling. Uses the global
+ * `fetch` (Node 18+), so no extra dependency is required.
  */
 export class AnthropicProvider implements LLMProvider {
   readonly name = 'anthropic';
@@ -85,15 +186,9 @@ export class AnthropicProvider implements LLMProvider {
 
   async complete(
     messages: LLMMessage[],
-    _tools: ToolSpec[],
+    tools: ToolSpec[],
   ): Promise<LLMCompletion> {
-    const system = messages
-      .filter((m) => m.role === 'system')
-      .map((m) => m.content)
-      .join('\n\n');
-    const turns = messages
-      .filter((m) => m.role === 'user' || m.role === 'assistant')
-      .map((m) => ({ role: m.role, content: m.content }));
+    const { system, messages: mapped } = toAnthropicMessages(messages);
 
     const res = await fetch(`${this.baseUrl}/v1/messages`, {
       method: 'POST',
@@ -106,7 +201,8 @@ export class AnthropicProvider implements LLMProvider {
         model: this.opts.model,
         max_tokens: this.maxTokens,
         ...(system ? { system } : {}),
-        messages: turns,
+        ...(tools.length ? { tools: toAnthropicTools(tools) } : {}),
+        messages: mapped,
       }),
     });
 
@@ -115,21 +211,91 @@ export class AnthropicProvider implements LLMProvider {
     }
 
     const data = (await res.json()) as {
-      content?: Array<{ type: string; text?: string }>;
+      content?: Parameters<typeof parseAnthropicContent>[0];
     };
-    const content = (data.content ?? [])
-      .filter((b) => b.type === 'text' && typeof b.text === 'string')
-      .map((b) => b.text as string)
-      .join('');
-
-    return { content, toolCalls: [] };
+    return parseAnthropicContent(data.content ?? []);
   }
 }
 
+// ---------------------------------------------------------------------------
+// OpenAI-compatible mapping (pure, unit-tested helpers)
+// ---------------------------------------------------------------------------
+
+interface OpenAIMessage {
+  role: string;
+  content: string | null;
+  tool_call_id?: string;
+  tool_calls?: Array<{
+    id: string;
+    type: 'function';
+    function: { name: string; arguments: string };
+  }>;
+}
+
+/** Map tool specs to OpenAI's `tools` (function) schema. */
+export function toOpenAITools(tools: ToolSpec[]) {
+  return tools.map((t) => ({
+    type: 'function' as const,
+    function: {
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters,
+    },
+  }));
+}
+
+/** Translate the flat YUKI message list into OpenAI chat messages. */
+export function toOpenAIMessages(messages: LLMMessage[]): OpenAIMessage[] {
+  return messages.map((m) => {
+    if (m.role === 'tool') {
+      return {
+        role: 'tool',
+        tool_call_id: m.toolCallId ?? '',
+        content: m.content,
+      };
+    }
+    if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length) {
+      return {
+        role: 'assistant',
+        content: m.content || null,
+        tool_calls: m.toolCalls.map((tc) => ({
+          id: tc.id,
+          type: 'function' as const,
+          function: { name: tc.name, arguments: JSON.stringify(tc.args ?? {}) },
+        })),
+      };
+    }
+    return { role: m.role, content: m.content };
+  });
+}
+
+/** Parse an OpenAI chat choice into a normalized completion. */
+export function parseOpenAIChoice(choice: {
+  message?: {
+    content?: string | null;
+    tool_calls?: Array<{
+      id?: string;
+      function?: { name?: string; arguments?: string };
+    }>;
+  };
+}): LLMCompletion {
+  const message = choice.message ?? {};
+  const toolCalls: ToolCall[] = (message.tool_calls ?? []).map((tc) => {
+    let args: unknown = {};
+    try {
+      args = tc.function?.arguments ? JSON.parse(tc.function.arguments) : {};
+    } catch {
+      args = { _raw: tc.function?.arguments };
+    }
+    return { id: tc.id ?? '', name: tc.function?.name ?? '', args };
+  });
+  return { content: message.content ?? '', toolCalls };
+}
+
 /**
- * OpenAI-compatible Chat Completions adapter. Point `baseUrl` at any compatible
- * server (vLLM, TGI, Ollama, llama.cpp) hosting a model fine-tuned on the YUKI
- * datasets, and the same agent runtime drives it unchanged.
+ * OpenAI-compatible Chat Completions adapter with native tool calling. Point
+ * `baseUrl` at any compatible server (vLLM, TGI, Ollama, llama.cpp) hosting a
+ * model fine-tuned on the YUKI datasets; the same runtime drives it unchanged.
  */
 export class OpenAICompatibleProvider implements LLMProvider {
   readonly name = 'openai-compatible';
@@ -143,7 +309,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
 
   async complete(
     messages: LLMMessage[],
-    _tools: ToolSpec[],
+    tools: ToolSpec[],
   ): Promise<LLMCompletion> {
     const res = await fetch(`${this.baseUrl}/v1/chat/completions`, {
       method: 'POST',
@@ -156,9 +322,8 @@ export class OpenAICompatibleProvider implements LLMProvider {
       body: JSON.stringify({
         model: this.opts.model,
         max_tokens: this.maxTokens,
-        messages: messages
-          .filter((m) => m.role !== 'tool')
-          .map((m) => ({ role: m.role, content: m.content })),
+        ...(tools.length ? { tools: toOpenAITools(tools) } : {}),
+        messages: toOpenAIMessages(messages),
       }),
     });
 
@@ -167,9 +332,8 @@ export class OpenAICompatibleProvider implements LLMProvider {
     }
 
     const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
+      choices?: Array<Parameters<typeof parseOpenAIChoice>[0]>;
     };
-    const content = data.choices?.[0]?.message?.content ?? '';
-    return { content, toolCalls: [] };
+    return parseOpenAIChoice(data.choices?.[0] ?? {});
   }
 }
