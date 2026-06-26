@@ -1,7 +1,7 @@
 # YUKI — Brain & Training Pipeline
 
 This document explains how the **YUKI runtime** (in `src/yuki/`) connects to its
-**brain** (the LLM), and how the five datasets requested are used to *fine-tune*
+**brain** (the LLM), and how the five datasets requested are used to _fine-tune_
 that brain. It is written to be honest about boundaries: the runtime here is
 real, runnable, and tested; the model training is a documented recipe that runs
 on separate GPU infrastructure, not inside this repository.
@@ -22,10 +22,10 @@ ask(task) ─► retrieve (knowledge + memory, domain-isolated)
 
 Three brains ship out of the box:
 
-| Provider | File | Use |
-| --- | --- | --- |
-| `MockBrain` | `llm.ts` | Offline, deterministic — local dev & tests, no API key |
-| `AnthropicProvider` | `llm.ts` | Claude (e.g. Opus) via the Messages API |
+| Provider                   | File     | Use                                                       |
+| -------------------------- | -------- | --------------------------------------------------------- |
+| `MockBrain`                | `llm.ts` | Offline, deterministic — local dev & tests, no API key    |
+| `AnthropicProvider`        | `llm.ts` | Claude (e.g. Opus) via the Messages API                   |
 | `OpenAICompatibleProvider` | `llm.ts` | Any vLLM/TGI/Ollama server hosting a **fine-tuned** model |
 
 The fine-tuned YUKI brain is served behind the OpenAI-compatible endpoint, so the
@@ -37,13 +37,13 @@ Each dataset maps to a specific capability YUKI's spec demands. All are used for
 **supervised fine-tuning (SFT)** of an open-weights base model; none replaces the
 runtime's governance logic.
 
-| # | Dataset | Capability it trains | YUKI principle served |
-| - | ------- | -------------------- | --------------------- |
-| 1 | [claude-opus reasoning 8.7k](https://huggingface.co/datasets/angrygiraffe/claude-opus-4.6-4.7-reasoning-8.7k) | Long-form `<think>` reasoning over coding/math/devops, role-conditioned | Reasoning framework (§2), evidence-first |
-| 2 | [SWE-bench Verified](https://huggingface.co/datasets/SWE-bench/SWE-bench_Verified) | Real GitHub issue → patch, human-validated | Root-cause fixes (§11), production-ready |
-| 3 | [ToolACE](https://huggingface.co/datasets/Team-ACE/ToolACE) | Multi-turn function composition incl. "no valid tool" cases | Tool calling (§9), safe abstention |
-| 4 | [xLAM function-calling 60k](https://huggingface.co/datasets/Salesforce/xlam-function-calling-60k) | Execution-verified query→tool→answer JSON | Function-calling reliability |
-| 5 | [SWE-rebench OpenHands trajectories](https://huggingface.co/datasets/nebius/SWE-rebench-openhands-trajectories) | Full agent rollouts (plan→act→observe) | Feedback cycle (§17), failure intelligence |
+| #   | Dataset                                                                                                         | Capability it trains                                                    | YUKI principle served                      |
+| --- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------ |
+| 1   | [claude-opus reasoning 8.7k](https://huggingface.co/datasets/angrygiraffe/claude-opus-4.6-4.7-reasoning-8.7k)   | Long-form `<think>` reasoning over coding/math/devops, role-conditioned | Reasoning framework (§2), evidence-first   |
+| 2   | [SWE-bench Verified](https://huggingface.co/datasets/SWE-bench/SWE-bench_Verified)                              | Real GitHub issue → patch, human-validated                              | Root-cause fixes (§11), production-ready   |
+| 3   | [ToolACE](https://huggingface.co/datasets/Team-ACE/ToolACE)                                                     | Multi-turn function composition incl. "no valid tool" cases             | Tool calling (§9), safe abstention         |
+| 4   | [xLAM function-calling 60k](https://huggingface.co/datasets/Salesforce/xlam-function-calling-60k)               | Execution-verified query→tool→answer JSON                               | Function-calling reliability               |
+| 5   | [SWE-rebench OpenHands trajectories](https://huggingface.co/datasets/nebius/SWE-rebench-openhands-trajectories) | Full agent rollouts (plan→act→observe)                                  | Feedback cycle (§17), failure intelligence |
 
 Notes verified from the dataset cards (rephrased for licensing compliance):
 
@@ -63,7 +63,7 @@ Notes verified from the dataset cards (rephrased for licensing compliance):
   built deterministically in `reasoning.ts`. The runtime keeps the trace
   honest; the brain supplies the prose.
 - **Engineering fixes** (datasets 2, 5) → the brain proposes patches; YUKI's
-  `KnowledgeBase` only promotes an approach to *best practice* after **repeated**
+  `KnowledgeBase` only promotes an approach to _best practice_ after **repeated**
   verified success, never from a single trajectory.
 - **Tool use** (datasets 3, 4) → the brain emits tool calls; `ToolRegistry`
   re-validates every argument with zod before execution (defense in depth), so a
