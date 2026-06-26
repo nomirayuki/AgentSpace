@@ -6,6 +6,9 @@
     "rootDir": "src",
     "outDir": "dist",
     "strict": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "lib": [
@@ -14,7 +17,11 @@
     ]
   },
   "include": [
-    "src/**/*",
-    "tests/**/*"
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "tests"
   ]
 }
