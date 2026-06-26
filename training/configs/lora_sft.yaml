@@ -1,0 +1,62 @@
+# QLoRA SFT config for the YUKI brain.
+#
+# Tooling-agnostic reference: the keys below map cleanly onto TRL's SFTTrainer /
+# LLaMA-Factory. Adjust to your launcher. Train on the JSONL produced by
+# build_mixture.py (unified chat schema: messages[] + optional tools[]).
+
+# --- Base model -------------------------------------------------------------
+# Pick a permissively licensed instruct model with a tool-use chat template.
+base_model: Qwen/Qwen2.5-7B-Instruct
+trust_remote_code: true
+
+# --- Data -------------------------------------------------------------------
+dataset: mixture.jsonl # output of build_mixture.py
+dataset_format: chat # uses the `messages` field; `tools` kept as metadata
+eval_split: 0.02
+max_seq_length: 8192 # long enough to keep <think> reasoning + diffs
+
+# Suggested mixture weights (also encoded in normalize.DATASET_WEIGHTS):
+#   reasoning_opus 0.25 | xlam 0.25 | openhands 0.20 | swe_bench 0.15 | toolace 0.15
+
+# --- Quantization (QLoRA) ---------------------------------------------------
+load_in_4bit: true
+bnb_4bit_quant_type: nf4
+bnb_4bit_compute_dtype: bfloat16
+bnb_4bit_use_double_quant: true
+
+# --- LoRA adapter -----------------------------------------------------------
+adapter: lora
+lora_r: 32
+lora_alpha: 64
+lora_dropout: 0.05
+lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+
+# --- Optimization -----------------------------------------------------------
+num_train_epochs: 2
+per_device_train_batch_size: 4
+gradient_accumulation_steps: 8
+learning_rate: 1.0e-4
+lr_scheduler_type: cosine
+warmup_ratio: 0.03
+weight_decay: 0.0
+optimizer: paged_adamw_8bit
+bf16: true
+gradient_checkpointing: true
+packing: true
+
+# --- Output -----------------------------------------------------------------
+output_dir: ./out/yuki-sft
+logging_steps: 10
+save_steps: 200
+seed: 7
+# --- Evaluation (run after training) ----------------------------------------
+# - SWE-bench Verified resolved-rate (engineering / root-cause)
+# - Berkeley Function-Calling Leaderboard (tool accuracy)
+# - Held-out reasoning split exact/judge match

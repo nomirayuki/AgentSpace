@@ -2,3 +2,18 @@ node_modules
 dist
 .env
 npm-debug.log*
+
+# Rust build artifacts: ignore the whole cargo target tree except the one
+# prebuilt WASM artifact the Docker runtime image needs.
+rust-agent/**/target/*
+!rust-agent/plugin/target/wasm32-unknown-unknown
+rust-agent/plugin/target/wasm32-unknown-unknown/*
+!rust-agent/plugin/target/wasm32-unknown-unknown/release
+rust-agent/plugin/target/wasm32-unknown-unknown/release/*
+!rust-agent/plugin/target/wasm32-unknown-unknown/release/agent_plugin.wasm
+
+# Training artifacts
+training/mixture.jsonl
+training/out/
+__pycache__/
+.pytest_cache/
