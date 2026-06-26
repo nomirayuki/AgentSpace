@@ -8,16 +8,17 @@ import { TaskSchema } from './types.js';
 import { listAgents, registerAgent } from './registry.js';
 import { selectAgents } from './selector.js';
 import { scoreTag } from './wasm.js';
-import { YukiAgent } from './yuki/index.js';
+import { YukiAgent, createBrainFromEnv } from './yuki/index.js';
 
 const app = express();
 
 // Limit request body size to mitigate memory-exhaustion DoS.
 app.use(express.json({ limit: '100kb' }));
 
-// A single YUKI agent instance backed by the offline MockBrain. Swap the brain
-// for AnthropicProvider / OpenAICompatibleProvider in production.
-const yuki = new YukiAgent();
+// A single YUKI agent instance. The brain is selected from the environment:
+// ANTHROPIC_API_KEY -> Claude, LLM_BASE_URL -> self-hosted model, else MockBrain.
+const yuki = new YukiAgent({ brain: createBrainFromEnv() });
+console.log(`YUKI brain: ${yuki.brain.name}`);
 // Expose the WASM tag scorer as a callable tool for the agent.
 yuki.tools.register({
   name: 'score_tag',

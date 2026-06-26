@@ -7,3 +7,4 @@ export * from './tools.js';
 export * from './llm.js';
 export * from './reasoning.js';
 export * from './agent.js';
+export * from './brain.js';
