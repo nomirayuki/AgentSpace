@@ -27,19 +27,35 @@ yuki.tools.register({
   handler: async ({ tag }) => ({ tag, score: await scoreTag(tag) }),
 });
 
+const DomainEnum = z.enum([
+  'engineering',
+  'security',
+  'trading',
+  'infrastructure',
+  'automation',
+  'general',
+]);
+
 const AskSchema = z.object({
   task: z.string().min(1),
-  domain: z
-    .enum([
-      'engineering',
-      'security',
-      'trading',
-      'infrastructure',
-      'automation',
-      'general',
-    ])
-    .optional(),
+  domain: DomainEnum.optional(),
   constraints: z.array(z.string()).optional(),
+});
+
+const LearnSchema = z.object({
+  domain: DomainEnum,
+  statement: z.string().min(1),
+  outcome: z.enum(['success', 'failure']),
+  evidence: z
+    .array(
+      z.object({
+        source: z.string().min(1),
+        detail: z.string().default(''),
+        strength: z.number().min(0).max(1),
+        observedAt: z.number().optional(),
+      }),
+    )
+    .default([]),
 });
 
 app.get('/health', (_req: Request, res: Response) => {
@@ -100,6 +116,41 @@ app.post('/yuki/ask', async (req: Request, res: Response) => {
     const msg = e instanceof Error ? e.message : String(e);
     res.status(500).json({ error: msg });
   }
+});
+
+// Record a verified (or failed) experience as governed knowledge.
+app.post('/yuki/learn', (req: Request, res: Response) => {
+  const parsed = LearnSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.format() });
+    return;
+  }
+  const { domain, statement, outcome, evidence } = parsed.data;
+  const knowledge = yuki.learn({
+    domain,
+    statement,
+    outcome,
+    evidence: evidence.map((e) => ({
+      ...e,
+      observedAt: e.observedAt ?? Date.now(),
+    })),
+  });
+  res.status(201).json(knowledge);
+});
+
+// Inspect governed knowledge, optionally filtered by domain.
+app.get('/yuki/knowledge', (req: Request, res: Response) => {
+  const domain = req.query.domain;
+  if (typeof domain === 'string') {
+    const parsed = DomainEnum.safeParse(domain);
+    if (!parsed.success) {
+      res.status(400).json({ error: `invalid domain: ${domain}` });
+      return;
+    }
+    res.json(yuki.knowledge.retrieve(parsed.data));
+    return;
+  }
+  res.json(yuki.knowledge.all());
 });
 
 // 404 for unknown routes.

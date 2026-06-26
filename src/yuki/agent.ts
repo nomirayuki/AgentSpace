@@ -137,6 +137,14 @@ export class YukiAgent {
     for (let round = 0; round < this.maxToolRounds; round += 1) {
       if (completion.toolCalls.length === 0) break;
 
+      // Record the assistant's tool-use turn so providers can reconstruct the
+      // required assistant(tool_use) -> tool(result) message sequence.
+      messages.push({
+        role: 'assistant',
+        content: completion.content,
+        toolCalls: completion.toolCalls,
+      });
+
       const results = await this.tools.executeAll(completion.toolCalls);
       for (const r of results) {
         toolsUsed.push(r.name);

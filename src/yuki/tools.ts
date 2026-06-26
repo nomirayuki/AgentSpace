@@ -1,6 +1,21 @@
 import { z } from 'zod';
 import type { ToolCall } from './types.js';
 
+/** Convert a zod schema to a JSON Schema object for tool advertisement. */
+function toJsonSchema(schema: z.ZodType): Record<string, unknown> {
+  try {
+    // zod v4 ships a native JSON Schema converter.
+    const fn = (z as unknown as { toJSONSchema?: (s: z.ZodType) => unknown })
+      .toJSONSchema;
+    if (typeof fn === 'function') {
+      return fn(schema) as Record<string, unknown>;
+    }
+  } catch {
+    // fall through to a permissive default
+  }
+  return { type: 'object', additionalProperties: true };
+}
+
 /** A registered, function-callable tool. */
 export interface Tool<TArgs = unknown, TResult = unknown> {
   name: string;
@@ -26,6 +41,8 @@ export interface ToolResult {
 export interface ToolSpec {
   name: string;
   description: string;
+  /** JSON Schema of the tool arguments, derived from the zod schema. */
+  parameters: Record<string, unknown>;
 }
 
 /**
@@ -53,6 +70,7 @@ export class ToolRegistry {
     return [...this.tools.values()].map((t) => ({
       name: t.name,
       description: t.description,
+      parameters: toJsonSchema(t.schema),
     }));
   }
 
